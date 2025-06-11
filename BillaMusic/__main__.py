@@ -15,6 +15,7 @@ loop = asyncio.get_event_loop_policy().get_event_loop()
 async def init():
     await app.start()
     for all_module in ALL_MODULES:
+        logging.info(f"Importing module: {all_module}")
         importlib.import_module("BillaMusic.plugins" + all_module)
     logging.info("Successfully imported all modules.")
     await send()
