@@ -10,7 +10,7 @@ from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls, filters
 from pytgcalls.exceptions import (
     NoActiveGroupCall,
-    PyTgCallsException,  # Fallback for AlreadyJoinedError
+    PyTgCallsAlreadyRunning,  # Specific exception for already joined
 )
 from ntgcalls import TelegramServerError
 from pytgcalls.types import AudioQuality, Update, VideoQuality, MediaStream, ChatUpdate
@@ -112,10 +112,34 @@ class Call(PyTgCalls):
         except Exception as e:
             raise ConfigError(f"Failed to initialize userbots: {str(e)}")
 
+    async def check_active_call(self, chat_id: int) -> bool:
+        """Check if a voice chat is active in the given chat."""
+        assistant = await group_assistant(self, chat_id)
+        try:
+            participants = await assistant.get_participants(chat_id)
+            return len(participants) > 0
+        except NoActiveGroupCall:
+            return False
+        except Exception as e:
+            raise VoiceChatError(f"Failed to check active call: {str(e)}", chat_id=chat_id)
+
+    async def log_error(self, chat_id: int, method: str, error: Exception):
+        """Log an error with chat context and method details."""
+        error_msg = f"Error in {method} for chat {chat_id}: {str(error)}"
+        logging.error(error_msg)
+        try:
+            await app.send_message(
+                chat_id=config.LOGGER_ID,
+                text=error_msg,
+                disable_web_page_preview=True
+            )
+        except Exception as e:
+            logging.error(f"Failed to send error to logger: {str(e)}")
+
     async def pause_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
         try:
-            if not await assistant.is_streaming(chat_id):
+            if not db.get(chat_id) or db[chat_id][0]["played"] == 0:
                 raise VoiceChatError("No stream is currently playing.", chat_id=chat_id)
             await assistant.pause_stream(chat_id)
             await app.send_message(
@@ -129,7 +153,7 @@ class Call(PyTgCalls):
     async def resume_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
         try:
-            if await assistant.is_streaming(chat_id):
+            if db.get(chat_id) and db[chat_id][0]["played"] != 0:
                 raise VoiceChatError("Stream is already playing.", chat_id=chat_id)
             await assistant.resume_stream(chat_id)
             await app.send_message(
@@ -245,8 +269,8 @@ class Call(PyTgCalls):
                 exis = (playing[0]).get("old_dur")
                 if not exis:
                     db[chat_id][0]["old_dur"] = db[chat_id][0]["dur"]
-                    db[chat_id][0]["old_second"] = db[chat_id][0]["seconds"]
-                db[chat_id][0]["played"] = con_seconds
+                    db[chat_id][0]["cuts"] = db[chat_id][0]["seconds"]
+                db[chat_id][0]["passed"] = con_seconds
                 db[chat_id][0]["dur"] = duration
                 db[chat_id][0]["seconds"] = dur
                 db[chat_id][0]["speed_path"] = out
@@ -323,6 +347,8 @@ class Call(PyTgCalls):
         link,
         video: Union[bool, str] = None,
     ):  
+        if not await self.check_active_call(chat_id):
+            raise VoiceChatError("Please start voice chat first.", chat_id=chat_id)
         assistant = await group_assistant(self, chat_id)
         try:
             if video:
@@ -338,16 +364,16 @@ class Call(PyTgCalls):
                 )
             await assistant.play(chat_id, stream)
         except NoActiveGroupCall:
-            raise VoiceChatError("Please start voice chat first.", chat_id=chat_id)
-        except PyTgCallsException as e:  # Fallback for AlreadyJoinedError
-            raise VoiceChatError(f"Assistant already in VC or other error: {str(e)}", chat_id=chat_id)
+            raise VoiceChatError("Voice chat is no longer active.", chat_id=chat_id)
+        except PyTgCallsAlreadyRunning:
+            raise VoiceChatError("Assistant is already in a voice chat. Try /reboot.", chat_id=chat_id)
         except TelegramServerError:
             raise VoiceChatError(
                 "Telegram is having internal problems. Try restarting voice chat or wait for sometime.",
                 chat_id=chat_id
             )
         except Exception as e:
-            logging.error(e)
+            await self.log_error(chat_id, "join_call", e)
             raise VoiceChatError(f"Unexpected error joining call: {str(e)}", chat_id=chat_id)
         await add_active_chat(chat_id)
         await music_on(chat_id)
@@ -359,7 +385,7 @@ class Call(PyTgCalls):
             if users == 1:
                 autoend[chat_id] = datetime.now() + timedelta(minutes=1)
 
-    async def play(self, client, chat_id):
+    async def play(self, client, chat_id, max_retries: int = 3):
         check = db.get(chat_id)
         popped = None
         loop = await get_loop(chat_id)
@@ -391,25 +417,30 @@ class Call(PyTgCalls):
                 db[chat_id][0]["speed"] = 1.0
             video = str(streamtype) == "video"
             if "live_" in queued:
-                n, link = await YouTube.video(videoid, True)
-                if n == 0:
-                    raise StreamError("Failed to fetch live stream URL", stream_type=streamtype)
-                stream = (
-                    MediaStream(
-                        link,
-                        audio_parameters=AudioQuality.STUDIO,
-                        video_parameters=VideoQuality.UHD_4K,
-                    )
-                    if video
-                    else MediaStream(
-                        link,
-                        audio_parameters=AudioQuality.STUDIO,
-                    )
-                )
-                try:
-                    await client.play(chat_id, stream)
-                except Exception as e:
-                    raise StreamError(f"Failed to play live stream: {str(e)}", stream_type=streamtype)
+                for attempt in range(max_retries):
+                    try:
+                        n, link = await YouTube.video(videoid, True)
+                        if n == 0:
+                            raise StreamError("Failed to fetch live stream URL", stream_type=streamtype)
+                        stream = (
+                            MediaStream(
+                                link,
+                                audio_parameters=AudioQuality.STUDIO,
+                                video_parameters=VideoQuality.UHD_4K,
+                            )
+                            if video
+                            else MediaStream(
+                                link,
+                                audio_parameters=AudioQuality.STUDIO,
+                            )
+                        )
+                        await client.play(chat_id, stream)
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2)
+                            continue
+                        raise StreamError(f"Failed to play live stream after {max_retries} attempts: {str(e)}", stream_type=streamtype)
                 button = stream_markup(chat_id)
                 ke = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
                 run = await app.send_message(
@@ -427,11 +458,16 @@ class Call(PyTgCalls):
                 db[chat_id][0]["markup"] = "tg"
             elif "vid_" in queued:
                 mystic = await app.send_message(original_chat_id, "Next Track Is Downloading... Please wait.")
-                try:
-                    file_path, direct = await YouTube.download(videoid, mystic, videoid=True, video=video)
-                except Exception as e:
-                    await mystic.delete()
-                    raise DownloadError(f"Failed to download video: {str(e)}", url=videoid)
+                for attempt in range(max_retries):
+                    try:
+                        file_path, direct = await YouTube.download(videoid, mystic, videoid=True, video=video)
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2)
+                            continue
+                        await mystic.delete()
+                        raise DownloadError(f"Failed to download video after {max_retries} attempts: {str(e)}", url=videoid)
                 stream = (
                     MediaStream(
                         file_path,
@@ -588,7 +624,7 @@ class Call(PyTgCalls):
             try:
                 await self.stop_stream(update.chat_id)
             except Exception as e:
-                logging.error(f"Stream service handler error: {e}")
+                await self.log_error(update.chat_id, "stream_services_handler", e)
 
         @self.one.on_update(filters.stream_end)
         @self.two.on_update(filters.stream_end)
