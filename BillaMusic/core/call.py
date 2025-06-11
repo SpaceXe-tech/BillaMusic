@@ -605,39 +605,43 @@ class Call(PyTgCalls):
             raise ConfigError(f"Failed to start userbots: {str(e)}")
 
     async def decorators(self):
-        @self.one.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
-        @self.two.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
-        @self.three.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
-        @self.four.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
-        @self.five.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
-        @self.one.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
-        @self.two.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
-        @self.three.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
-        @self.four.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
-        @self.five.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
-        @self.one.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
-        @self.two.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
-        @self.three.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
-        @self.four.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
-        @self.five.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
-        async def stream_services_handler(_, update: Update):
-            try:
-                await self.stop_stream(update.chat_id)
-            except Exception as e:
-                await self.log_error(update.chat_id, "stream_services_handler", e)
+    logging.info("Registering PyTgCalls update handlers")
 
-        @self.one.on_update(filters.stream_end)
-        @self.two.on_update(filters.stream_end)
-        @self.three.on_update(filters.stream_end)
-        @self.four.on_update(filters.stream_end)
-        @self.five.on_update(filters.stream_end)
-        async def stream_end_handler(client, update: Update):
-            if not isinstance(update, StreamAudioEnded):
-                return
-            try:
-                await self.play(client, update.chat_id)
-            except Exception as e:
-                raise StreamError(f"Failed to handle stream endup: {str(e)}", stream_type="audio")
+    @self.one.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+    @self.two.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+    @self.three.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+    @self.four.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+    @self.five.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+    @self.one.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+    @self.two.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+    @self.three.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+    @self.four.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+    @self.five.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+    @self.one.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+    @self.two.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+    @self.three.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+    @self.four.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+    @self.five.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+    async def stream_services_handler(_, update: Update):
+        logging.info(f"stream_services_handler called with update: {update}")
+        try:
+            await self.stop_stream(update.chat_id)
+        except Exception as e:
+            await self.log_error(update.chat_id, "stream_services_handler", e)
+
+    @self.one.on_update(filters.stream_end)
+    @self.two.on_update(filters.stream_end)
+    @self.three.on_update(filters.stream_end)
+    @self.four.on_update(filters.stream_end)
+    @self.five.on_update(filters.stream_end)
+    async def stream_end_handler(client, update: Update):
+        logging.info(f"stream_end_handler called with update: {update}")
+        if not isinstance(update, StreamEnded):  # Updated to StreamEnded
+            return
+        try:
+            await self.play(client, update.chat_id)
+        except Exception as e:
+            raise StreamError(f"Failed to handle stream endup: {str(e)}", stream_type="audio")
 
 
 BillaMusic = Call()
