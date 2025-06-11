@@ -1,3 +1,4 @@
+# BillaMusic/utils/stream/stream.py
 import os
 from typing import Union
 import logging
@@ -9,7 +10,7 @@ from BillaMusic import YouTube, app
 from BillaMusic.core.call import BillaMusic
 from BillaMusic.misc import db
 from BillaMusic.utils.database import add_active_video_chat, is_active_chat
-from BillaMusic.utils.exceptions import AssistantErr
+from BillaMusic.utils.exceptions import StreamError, DownloadError, VoiceChatError
 from BillaMusic.utils.inline import aq_markup, close_markup, stream_markup
 from BillaMusic.utils.pastebin import paste
 from BillaMusic.utils.stream.queue import put_queue, put_queue_index
@@ -28,9 +29,17 @@ async def stream(
     forceplay: Union[bool, str] = None,
 ):
     if not result:
-        return
+        raise StreamError("No stream results provided.", stream_type=streamtype)
     if forceplay:
-        await BillaMusic.force_stop_stream(chat_id)
+        try:
+            await BillaMusic.force_stop_stream(chat_id)
+        except VoiceChatError as e:
+            await app.send_message(
+                chat_id=original_chat_id,
+                text=f"Failed to force stop stream: {str(e)}",
+                disable_web_page_preview=True
+            )
+            return
     if streamtype == "playlist":
         msg = "Queued Playlist:\n\n"
         count = 0
@@ -44,7 +53,8 @@ async def stream(
                     duration_sec,
                     vidid,
                 ) = await YouTube.details(search, not spotify)
-            except BaseException:
+            except Exception as e:
+                logging.error(f"Failed to fetch playlist details: {str(e)}")
                 continue
             if str(duration_min) == "None":
                 continue
@@ -53,9 +63,9 @@ async def stream(
             if await is_active_chat(chat_id):
                 check = db.get(chat_id)
                 if len(check) > config.QUEUE_LIMIT:
-                    return await app.send_message(
-                        chat_id,
-                        f"You are spamming. {config.QUEUE_LIMIT} songs in queue, either wait them to finish or use /end.",
+                    raise StreamError(
+                        f"Queue limit reached ({config.QUEUE_LIMIT} songs). Wait for songs to finish or use /end.",
+                        stream_type="playlist"
                     )
                 await put_queue(
                     chat_id,
@@ -81,14 +91,22 @@ async def stream(
                         vidid, mystic, video=status, videoid=True
                     )
                 except Exception as e:
-                    logging.exception(e)
-                    raise AssistantErr("Failed to fetch track details. Try any other.")
-                await BillaMusic.join_call(
-                    chat_id,
-                    original_chat_id,
-                    file_path,
-                    video=status,
-                )
+                    logging.error(f"Download failed: {str(e)}")
+                    raise DownloadError(f"Failed to download track: {str(e)}", url=vidid)
+                try:
+                    await BillaMusic.join_call(
+                        chat_id,
+                        original_chat_id,
+                        file_path,
+                        video=status,
+                    )
+                except VoiceChatError as e:
+                    await app.send_message(
+                        chat_id=original_chat_id,
+                        text=f"Failed to join call: {str(e)}",
+                        disable_web_page_preview=True
+                    )
+                    return
                 await put_queue(
                     chat_id,
                     original_chat_id,
@@ -102,7 +120,7 @@ async def stream(
                     forceplay=forceplay,
                 )
                 button = stream_markup(chat_id)
-                meow = "<b> Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+                meow = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
                 run = await app.send_message(
                     original_chat_id,
                     text=meow.format(
@@ -117,17 +135,18 @@ async def stream(
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "stream"
         if count == 0:
-            return
+            raise StreamError("No valid tracks found in playlist.", stream_type="playlist")
         link = await paste(msg)
         lines = msg.count("\n")
         car = os.linesep.join(msg.split(os.linesep)[:17]) if lines >= 17 else msg
         upl = close_markup()
         cv = "Added {} tracks to queue.\n\n<b>Check:</b> <a href={}>Click here</a>"
-        return await app.send_message(
+        await app.send_message(
             original_chat_id,
-            text=cv.format(position, link),
+            text=cv.format(count, link),
             reply_markup=upl,
         )
+        return
     elif streamtype == "youtube":
         link = result["link"]
         vidid = result["vidid"]
@@ -139,14 +158,14 @@ async def stream(
                 vidid, mystic, videoid=True, video=status
             )
         except Exception as e:
-            logging.exception(e)
-            raise AssistantErr("Failed to fetch track details. Try playing any other.")
+            logging.error(f"Download failed: {str(e)}")
+            raise DownloadError(f"Failed to download track: {str(e)}", url=vidid)
         if await is_active_chat(chat_id):
             check = db.get(chat_id)
             if len(check) > config.QUEUE_LIMIT:
-                return await app.send_message(
-                    chat_id,
-                    f"You are spamming. {config.QUEUE_LIMIT} songs in queue, either wait them to finish or use /end.",
+                raise StreamError(
+                    f"Queue limit reached ({config.QUEUE_LIMIT} songs). Wait for songs to finish or use /end.",
+                    stream_type="youtube"
                 )
             await put_queue(
                 chat_id,
@@ -170,12 +189,20 @@ async def stream(
         else:
             if not forceplay:
                 db[chat_id] = []
-            await BillaMusic.join_call(
-                chat_id,
-                original_chat_id,
-                file_path,
-                video=status,
-            )
+            try:
+                await BillaMusic.join_call(
+                    chat_id,
+                    original_chat_id,
+                    file_path,
+                    video=status,
+                )
+            except VoiceChatError as e:
+                await app.send_message(
+                    chat_id=original_chat_id,
+                    text=f"Failed to join call: {str(e)}",
+                    disable_web_page_preview=True
+                )
+                return
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -189,7 +216,7 @@ async def stream(
                 forceplay=forceplay,
             )
             button = stream_markup(chat_id)
-            meo = "<b> Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+            meo = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
             run = await app.send_message(
                 original_chat_id,
                 text=meo.format(
@@ -210,9 +237,9 @@ async def stream(
         if await is_active_chat(chat_id):
             check = db.get(chat_id)
             if len(check) > config.QUEUE_LIMIT:
-                return await app.send_message(
-                    chat_id,
-                    f"You are spamming. {config.QUEUE_LIMIT} songs in queue, either wait them to finish or use /end.",
+                raise StreamError(
+                    f"Queue limit reached ({config.QUEUE_LIMIT} songs). Wait for songs to finish or use /end.",
+                    stream_type="soundcloud"
                 )
             await put_queue(
                 chat_id,
@@ -236,9 +263,17 @@ async def stream(
         else:
             if not forceplay:
                 db[chat_id] = []
-            await BillaMusic.join_call(
-                chat_id, original_chat_id, file_path, video=None
-            )
+            try:
+                await BillaMusic.join_call(
+                    chat_id, original_chat_id, file_path, video=None
+                )
+            except VoiceChatError as e:
+                await app.send_message(
+                    chat_id=original_chat_id,
+                    text=f"Failed to join call: {str(e)}",
+                    disable_web_page_preview=True
+                )
+                return
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -251,13 +286,11 @@ async def stream(
                 "audio",
                 forceplay=forceplay,
             )
-            button = stream_markup(chat_id)
-            me = "<b> Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+            button = stream_markup(chat_id=chat_id)
+            me = "<b>Started Streaming</b>\n\n<b>Title:</b> {}\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
             run = await app.send_message(
-                original_chat_id,
-                text=me.format(
-                    config.SUPPORT_CHAT, title[:30], duration_min, user_name
-                ),
+                chat_id=original_chat_id,
+                text=me.format(title[:27], duration_min, user_name),
                 reply_markup=InlineKeyboardMarkup(button),
                 disable_web_page_preview=True
             )
@@ -272,9 +305,9 @@ async def stream(
         if await is_active_chat(chat_id):
             check = db.get(chat_id)
             if len(check) > config.QUEUE_LIMIT:
-                return await app.send_message(
-                    chat_id,
-                    f"You are spamming. {config.QUEUE_LIMIT} songs in queue, either wait them to finish or use /end.",
+                raise StreamError(
+                    f"Queue limit reached ({config.QUEUE_LIMIT} songs). Wait for songs to finish or use /end.",
+                    stream_type="telegram"
                 )
             await put_queue(
                 chat_id,
@@ -298,9 +331,17 @@ async def stream(
         else:
             if not forceplay:
                 db[chat_id] = []
-            await BillaMusic.join_call(
-                chat_id, original_chat_id, file_path, video=status
-            )
+            try:
+                await BillaMusic.join_call(
+                    chat_id, original_chat_id, file_path, video=status
+                )
+            except VoiceChatError as e:
+                await app.send_message(
+                    chat_id=original_chat_id,
+                    text=f"Failed to join call: {str(e)}",
+                    disable_web_page_preview=True
+                )
+                return
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -316,7 +357,7 @@ async def stream(
             if video:
                 await add_active_video_chat(chat_id)
             button = stream_markup(chat_id)
-            mz = "<b> Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+            mz = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
             run = await app.send_message(
                 original_chat_id,
                 text=mz.format(link, title[:30], duration_min, user_name),
@@ -334,9 +375,9 @@ async def stream(
         if await is_active_chat(chat_id):
             check = db.get(chat_id)
             if len(check) > config.QUEUE_LIMIT:
-                return await app.send_message(
-                    chat_id,
-                    f"You are spamming. {config.QUEUE_LIMIT} songs in queue, either wait them to finish or use /end.",
+                raise StreamError(
+                    f"Queue limit reached ({config.QUEUE_LIMIT} songs). Wait for songs to finish or use /end.",
+                    stream_type="live"
                 )
             await put_queue(
                 chat_id,
@@ -351,7 +392,7 @@ async def stream(
             )
             position = len(db.get(chat_id)) - 1
             button = aq_markup(chat_id)
-            q = "<b>Added to queue at #{}\n\nTitle:</b> {}\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+            q = "<b>Added to queue at #{}\n\nTitle:</b> {}\n<b>Duration:</b> {}\n<b>Requested by:</b> {}"
             await app.send_message(
                 chat_id=original_chat_id,
                 text=q.format(position, title[:27], duration_min, user_name),
@@ -362,13 +403,21 @@ async def stream(
                 db[chat_id] = []
             n, file_path = await YouTube.video(link)
             if n == 0:
-                raise AssistantErr("No live youtube video found.")
-            await BillaMusic.join_call(
-                chat_id,
-                original_chat_id,
-                file_path,
-                video=status,
-            )
+                raise StreamError("No live YouTube video found.", stream_type="live")
+            try:
+                await BillaMusic.join_call(
+                    chat_id,
+                    original_chat_id,
+                    file_path,
+                    video=status,
+                )
+            except VoiceChatError as e:
+                await app.send_message(
+                    chat_id=original_chat_id,
+                    text=f"Failed to join call: {str(e)}",
+                    disable_web_page_preview=True
+                )
+                return
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -382,7 +431,7 @@ async def stream(
                 forceplay=forceplay,
             )
             button = stream_markup(chat_id)
-            az = "<b> Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+            az = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {}\n<b>Requested by:</b> {}"
             run = await app.send_message(
                 original_chat_id,
                 text=az.format(
@@ -403,9 +452,9 @@ async def stream(
         if await is_active_chat(chat_id):
             check = db.get(chat_id)
             if len(check) > config.QUEUE_LIMIT:
-                return await app.send_message(
-                    chat_id,
-                    f"You are spamming. {config.QUEUE_LIMIT} songs in queue, either wait them to finish or use /end.",
+                raise StreamError(
+                    f"Queue limit reached ({config.QUEUE_LIMIT} songs). Wait for songs to finish or use /end.",
+                    stream_type="index"
                 )
             await put_queue_index(
                 chat_id,
@@ -419,7 +468,7 @@ async def stream(
             )
             position = len(db.get(chat_id)) - 1
             button = aq_markup(chat_id)
-            mb = "<b>Added to queue at #{}\n\nTitle:</b> {}\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+            mb = "<b>Added to queue at #{}\n\nTitle:</b> {}\n<b>Duration:</b> {}\n<b>Requested by:</b> {}"
             await mystic.edit_text(
                 text=mb.format(position, title[:27], duration_min, user_name),
                 reply_markup=InlineKeyboardMarkup(button),
@@ -427,12 +476,20 @@ async def stream(
         else:
             if not forceplay:
                 db[chat_id] = []
-            await BillaMusic.join_call(
-                chat_id,
-                original_chat_id,
-                link,
-                video=True if video else None,
-            )
+            try:
+                await BillaMusic.join_call(
+                    chat_id,
+                    original_chat_id,
+                    link,
+                    video=True if video else None,
+                )
+            except VoiceChatError as e:
+                await app.send_message(
+                    chat_id=original_chat_id,
+                    text=f"Failed to join call: {str(e)}",
+                    disable_web_page_preview=True
+                )
+                return
             await put_queue_index(
                 chat_id,
                 original_chat_id,
@@ -446,7 +503,6 @@ async def stream(
             )
             button = stream_markup(chat_id)
             xc = "<b>Started Streaming</b>\n\n<b>Stream Type:</b> Live Stream [URL]\n<b>Requested by:</b> {}"
-
             run = await app.send_message(
                 original_chat_id,
                 text=xc.format(user_name),
