@@ -7,7 +7,7 @@ from pyrogram.types import InlineKeyboardMarkup
 
 import config
 from BillaMusic import YouTube, app
-from BillaMusic.core.call import BillaMusic
+from BillaMusic.core.call import Billa
 from BillaMusic.misc import db
 from BillaMusic.utils.database import add_active_video_chat, is_active_chat
 from BillaMusic.utils.exceptions import StreamError, DownloadError, VoiceChatError
@@ -32,7 +32,7 @@ async def stream(
         raise StreamError("No stream results provided.", stream_type=streamtype)
     if forceplay:
         try:
-            await BillaMusic.force_stop_stream(chat_id)
+            await Billa.force_stop_stream(chat_id)
         except VoiceChatError as e:
             await app.send_message(
                 chat_id=original_chat_id,
@@ -190,7 +190,7 @@ async def stream(
             if not forceplay:
                 db[chat_id] = []
             try:
-                await BillaMusic.join_call(
+                await Billa.join_call(
                     chat_id,
                     original_chat_id,
                     file_path,
@@ -264,7 +264,7 @@ async def stream(
             if not forceplay:
                 db[chat_id] = []
             try:
-                await BillaMusic.join_call(
+                await Billa.join_call(
                     chat_id, original_chat_id, file_path, video=None
                 )
             except VoiceChatError as e:
@@ -332,7 +332,7 @@ async def stream(
             if not forceplay:
                 db[chat_id] = []
             try:
-                await BillaMusic.join_call(
+                await Billa.join_call(
                     chat_id, original_chat_id, file_path, video=status
                 )
             except VoiceChatError as e:
@@ -405,7 +405,7 @@ async def stream(
             if n == 0:
                 raise StreamError("No live YouTube video found.", stream_type="live")
             try:
-                await BillaMusic.join_call(
+                await Billa.join_call(
                     chat_id,
                     original_chat_id,
                     file_path,
@@ -447,7 +447,7 @@ async def stream(
             db[chat_id][0]["markup"] = "tg"
     elif streamtype == "index":
         link = result
-        title = "Index or M3U8 Link"
+        title = "Index or M3U8 Links"
         duration_min = "00:00"
         if await is_active_chat(chat_id):
             check = db.get(chat_id)
@@ -477,7 +477,7 @@ async def stream(
             if not forceplay:
                 db[chat_id] = []
             try:
-                await BillaMusic.join_call(
+                await Billa.join_call(
                     chat_id,
                     original_chat_id,
                     link,
