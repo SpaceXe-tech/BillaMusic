@@ -5,7 +5,7 @@ from pyrogram.enums import ChatType
 
 import config
 from BillaMusic import app
-from BillaMusic.core.call import BillaMusic, autoend
+from BillaMusic.core.call import Billa, autoend
 from BillaMusic.utils.database import get_client, is_active_chat, is_autoend
 
 
@@ -55,7 +55,7 @@ async def auto_end():
                     continue
                 autoend[chat_id] = {}
                 try:
-                    await BillaMusic.stop_stream(chat_id)
+                    await Billa.stop_stream(chat_id)
                 except BaseException:
                     continue
                 try:
