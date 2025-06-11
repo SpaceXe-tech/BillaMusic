@@ -6,7 +6,7 @@ from pyrogram import idle
 
 from BillaMusic import app, userbot
 from BillaMusic.backup import send
-from BillaMusic.core.call import ShizukuMusic
+from BillaMusic.core.call import BillaMusic
 from BillaMusic.plugins import ALL_MODULES
 
 loop = asyncio.get_event_loop_policy().get_event_loop()
