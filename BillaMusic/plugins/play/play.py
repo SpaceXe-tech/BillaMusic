@@ -9,7 +9,7 @@ import config
 import logging
 from config import lyrical
 from BillaMusic import Apple, Resso, SoundCloud, Spotify, Telegram, YouTube, app
-from BillaMusic.core.call import BillaMMusic
+from BillaMusic.core.call import BillaMusic
 from BillaMusic.utils import seconds_to_min, time_to_seconds
 from BillaMusic.utils.channelplay import get_channeplayCB
 from BillaMusic.utils.decorators.play import PlayWrapper
