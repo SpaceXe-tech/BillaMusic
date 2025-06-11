@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, Message
 
 import config
 from BillaMusic import YouTube, app
-from BillaMusic.core.call import BillaMusic
+from BillaMusic.core.call import Billa
 from BillaMusic.misc import db
 from BillaMusic.utils.database import get_loop
 from BillaMusic.utils.decorators import AdminRightsCheck
@@ -48,7 +48,7 @@ async def skip(cli, message: Message, chat_id):
                                         ),
                                         reply_markup=close_markup(),
                                     )
-                                    await BillaMusicMusic.stop_stream(chat_id)
+                                    await Billa.stop_stream(chat_id)
                                 except BaseException:
                                     return
                                 break
@@ -83,7 +83,7 @@ async def skip(cli, message: Message, chat_id):
                     reply_markup=close_markup(),
                 )
                 try:
-                    return await BillaMusic.stop_stream(chat_id)
+                    return await Billa.stop_stream(chat_id)
                 except BaseException:
                     return
         except BaseException:
@@ -94,7 +94,7 @@ async def skip(cli, message: Message, chat_id):
                     ),
                     reply_markup=close_markup(),
                 )
-                return await BillaMusic.stop_stream(chat_id)
+                return await Billa.stop_stream(chat_id)
             except BaseException:
                 return
     queued = check[0]["file"]
@@ -117,7 +117,7 @@ async def skip(cli, message: Message, chat_id):
                 "Error while changing stream to {}".format(title)
             )
         try:
-            await BillaMusic.skip_stream(chat_id, link, video=status)
+            await Billa.skip_stream(chat_id, link, video=status)
         except BaseException:
             return await message.reply_text("Failed to switch stream, do /skip again.")
         button = stream_markup(chat_id)
@@ -148,7 +148,7 @@ async def skip(cli, message: Message, chat_id):
         except BaseException:
             return await mystic.edit_text("Failed to switch streams, try /skip again.")
         try:
-            await BillaMusic.skip_stream(chat_id, file_path, video=status)
+            await Billa.skip_stream(chat_id, file_path, video=status)
         except BaseException:
             return await mystic.edit_text("Failed to switch streams, try /skip again.")
         button = stream_markup(chat_id)
@@ -168,7 +168,7 @@ async def skip(cli, message: Message, chat_id):
         await mystic.delete()
     elif "index_" in queued:
         try:
-            await BillaMusic.skip_stream(chat_id, videoid, video=status)
+            await Billa.skip_stream(chat_id, videoid, video=status)
         except BaseException:
             return await message.reply_text("Failed to switch stream. Try /skip again.")
         button = stream_markup(chat_id)
@@ -182,7 +182,7 @@ async def skip(cli, message: Message, chat_id):
         db[chat_id][0]["markup"] = "tg"
     else:
         try:
-            await BillaMusic.skip_stream(chat_id, queued, video=status)
+            await Billa.skip_stream(chat_id, queued, video=status)
         except BaseException:
             return await message.reply_text("Failed to switch stream. Try /skip again.")
         if videoid == "telegram":
