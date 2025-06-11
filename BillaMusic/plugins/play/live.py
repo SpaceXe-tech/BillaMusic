@@ -8,8 +8,8 @@ from BillaMusic.utils.stream.stream import stream
 play_2 = (
     "<b>Channel Play Mode</b>\n\nProcessing please wait...\n\n<b>Linked Channel:</b> {}"
 )
-play_1 = "🔎"
-play_3 = "Failed to process query."
+play_1 = "💟"
+play_3 = "Error While Downloading The Song."
 
 
 @app.on_callback_query(filters.regex("LiveStream"))
