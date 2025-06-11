@@ -16,7 +16,7 @@ async def init():
     await app.start()
     # for all_module in ALL_MODULES:
     #     importlib.import_module("BillaMusic.plugins" + all_module)
-    importlib.import_module("BillaMusic.plugins.admins.Callback")
+    importlib.import_module("BillaMusic.plugins.admins.callback")
     logging.info("Successfully imported Callback module.")
     await send()
     await userbot.start()
