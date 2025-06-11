@@ -14,7 +14,7 @@ from pytgcalls.exceptions import (
 )
 from ntgcalls import TelegramServerError
 from pytgcalls.types import AudioQuality, Update, VideoQuality, MediaStream, ChatUpdate
-from pytgcalls.types.stream import StreamAudioEnded
+from pytgcalls.types import StreamEnded
 
 import config
 from BillaMusic import YouTube, app
