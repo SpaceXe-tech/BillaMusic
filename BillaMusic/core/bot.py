@@ -8,7 +8,7 @@ from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN, BOT_ID, BOT_USERNAME, BOT_NAME
 
 
-class BillaMusic(Client):
+class Billa(Client):
     def __init__(self):
         logging.info("Starting BillaMusic With Space-X Cores.")
         super().__init__(
