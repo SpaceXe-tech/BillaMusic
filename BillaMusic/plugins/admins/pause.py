@@ -2,7 +2,7 @@ from pyrogram import filters
 from pyrogram.types import Message
 
 from BillaMusic import app
-from BillaMusic.core.call import BillaMusicMusic
+from BillaMusic.core.call import BillaMusic
 from BillaMusic.utils.database import is_music_playing, music_off
 from BillaMusic.utils.decorators import AdminRightsCheck
 from BillaMusic.utils.inline import close_markup
