@@ -111,18 +111,32 @@ class Call(PyTgCalls):
             )
         except Exception as e:
             raise ConfigError(f"Failed to initialize userbots: {str(e)}")
-   
-  async def pause_stream(self, chat_id: int):
-      assistant = await group_assistant(self, chat_id)
-      try:
-          await assistant.pause_stream(chat_id)
-      except Exception as e:
-          raise VoiceChatError(f"Failed to pause stream: {str(e)}", chat_id=chat_id)
+
+    async def pause_stream(self, chat_id: int):
+        assistant = await group_assistant(self, chat_id)
+        try:
+            if not await assistant.is_streaming(chat_id):
+                raise VoiceChatError("No stream is currently playing.", chat_id=chat_id)
+            await assistant.pause_stream(chat_id)
+            await app.send_message(
+                chat_id=chat_id,
+                text="Stream paused successfully.",
+                disable_web_page_preview=True
+            )
+        except Exception as e:
+            raise VoiceChatError(f"Failed to pause stream: {str(e)}", chat_id=chat_id)
 
     async def resume_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
         try:
+            if await assistant.is_streaming(chat_id):
+                raise VoiceChatError("Stream is already playing.", chat_id=chat_id)
             await assistant.resume_stream(chat_id)
+            await app.send_message(
+                chat_id=chat_id,
+                text="Stream resumed successfully.",
+                disable_web_page_preview=True
+            )
         except Exception as e:
             raise VoiceChatError(f"Failed to resume stream: {str(e)}", chat_id=chat_id)
 
@@ -131,6 +145,11 @@ class Call(PyTgCalls):
         try:
             await _clear_(chat_id)
             await assistant.leave_call(chat_id)
+            await app.send_message(
+                chat_id=chat_id,
+                text="Stream stopped and voice chat left successfully.",
+                disable_web_page_preview=True
+            )
         except Exception as e:
             raise VoiceChatError(f"Failed to stop stream: {str(e)}", chat_id=chat_id)
 
@@ -139,27 +158,27 @@ class Call(PyTgCalls):
             if config.STRING1:
                 await self.one.leave_call(chat_id)
         except Exception as e:
-            logging.error(f"Failed to force stop stream for userbot1: {e}")
+            await self.log_error(chat_id, "stop_stream_force (userbot1)", e)
         try:
             if config.STRING2:
                 await self.two.leave_call(chat_id)
         except Exception as e:
-            logging.error(f"Failed to force stop stream for userbot2: {e}")
+            await self.log_error(chat_id, "stop_stream_force (userbot2)", e)
         try:
             if config.STRING3:
                 await self.three.leave_call(chat_id)
         except Exception as e:
-            logging.error(f"Failed to force stop stream for userbot3: {e}")
+            await self.log_error(chat_id, "stop_stream_force (userbot3)", e)
         try:
             if config.STRING4:
                 await self.four.leave_call(chat_id)
         except Exception as e:
-            logging.error(f"Failed to force stop stream for userbot4: {e}")
+            await self.log_error(chat_id, "stop_stream_force (userbot4)", e)
         try:
             if config.STRING5:
                 await self.five.leave_call(chat_id)
         except Exception as e:
-            logging.error(f"Failed to force stop stream for userbot5: {e}")
+            await self.log_error(chat_id, "stop_stream_force (userbot5)", e)
         try:
             await _clear_(chat_id)
         except Exception as e:
