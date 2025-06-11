@@ -4,7 +4,7 @@ from pyrogram.types import Message
 import logging
 
 from BillaMusic import YouTube, app
-from BillaMusic.core.call import BillaMusicMusic
+from BillaMusic.core.call import BillaMusic
 from BillaMusic.misc import db
 from BillaMusic.utils import AdminRightsCheck, seconds_to_min
 from BillaMusic.utils.inline import close_markup
