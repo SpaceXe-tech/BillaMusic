@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import adminlist, confirmer, votemode
 from BillaMusic import app
-from BillaMusic.core.call import BillaMusic
+from BillaMusic.core.call import Billa
 from BillaMusic.misc import db
 from BillaMusic.utils.database import (
     get_upvote_count,
@@ -129,7 +129,7 @@ async def del_back_playlist(client, CallbackQuery):
             )
         await CallbackQuery.answer()
         await music_off(chat_id)
-        await BillaMusic.pause_stream(chat_id)
+        await Billa.pause_stream(chat_id)
         await CallbackQuery.message.reply_text(
             "Track is paused by {}".format(mention), reply_markup=close_markup()
         )
@@ -140,7 +140,7 @@ async def del_back_playlist(client, CallbackQuery):
             )
         await CallbackQuery.answer()
         await music_on(chat_id)
-        await BillaMusic.resume_stream(chat_id)
+        await Billa.resume_stream(chat_id)
         await CallbackQuery.message.reply_text(
             "Track has been resumed by {}".format(mention), reply_markup=close_markup()
         )
