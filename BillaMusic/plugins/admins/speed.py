@@ -3,7 +3,7 @@ from pyrogram.types import Message
 
 from config import adminlist
 from BillaMusic import app
-from BillaMusic.core.call import BillaMusic
+from BillaMusic.core.call import Billa
 from BillaMusic.misc import db
 from BillaMusic.utils import AdminRightsCheck
 from BillaMusic.utils.database import is_active_chat, is_nonadmin_chat
@@ -101,7 +101,7 @@ async def del_back_playlist(client, CallbackQuery):
         ),
     )
     try:
-        await BillaMusic.speedup_stream(
+        await Billa.speedup_stream(
             chat_id,
             file_path,
             speed,
