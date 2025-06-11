@@ -9,12 +9,12 @@ from pytgcalls.__version__ import __version__ as pytgver
 
 import config
 from config import OWNER_ID
-from Billamusic import app
-from Billamusic.core.mongo import mongodb
-from Billamusic.core.userbot import assistants
-from Billamusic.plugins import ALL_MODULES
-from Billamusic.utils.database import get_served_chats, get_served_users
-from Billamusic.utils.inline.stats import back_stats_buttons, stats_buttons
+from BillaMusic import app
+from BillaMusic.core.mongo import mongodb
+from BillaMusic.core.userbot import assistants
+from BillaMusic.plugins import ALL_MODULES
+from BillaMusic.utils.database import get_served_chats, get_served_users
+from BillaMusic.utils.inline.stats import back_stats_buttons, stats_buttons
 
 
 @app.on_message(filters.command(["stats", "gstats"]))
