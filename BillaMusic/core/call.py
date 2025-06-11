@@ -235,6 +235,54 @@ class Call(PyTgCalls):
         except Exception as e:
             raise StreamError(f"Failed to process stream speedup: {str(e)}", stream_type=playing[0]["streamtype"])
 
+    async def skip_stream(self, chat_id: int, link: str, video: Union[bool, str] = None):
+        assistant = await group_assistant(self, chat_id)
+        try:
+            if video:
+                stream = MediaStream(
+                    link,
+                    audio_parameters=AudioQuality.STUDIO,
+                    video_parameters=VideoQuality.UHD_4K,
+                )
+            else:
+                stream = MediaStream(
+                    link,
+                    audio_parameters=AudioQuality.STUDIO,
+                )
+            await assistant.play(chat_id, stream)
+        except Exception as e:
+            raise StreamError(f"Failed to skip stream: {str(e)}", stream_type="video" if video else "audio")
+
+    async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
+        assistant = await group_assistant(self, chat_id)
+        try:
+            stream = (
+                MediaStream(
+                    file_path,
+                    audio_parameters=AudioQuality.STUDIO,
+                    video_parameters=VideoQuality.UHD_4K,
+                    ffmpeg_parameters=f"-ss {to_seek} -to {duration}",
+                )
+                if mode == "video"
+                else MediaStream(
+                    file_path,
+                    audio_parameters=AudioQuality.STUDIO,
+                    ffmpeg_parameters=f"-ss {to_seek} -to {duration}",
+                )
+            )
+            await assistant.play(chat_id, stream)
+        except Exception as e:
+            raise StreamError(f"Failed to seek stream: {str(e)}", stream_type=mode)
+
+    async def stream_call(self, link):
+        assistant = await group_assistant(self, config.LOGGER_ID)
+        try:
+            await assistant.play(config.LOGGER_ID, MediaStream(link))
+            await asyncio.sleep(0.2)
+            await assistant.leave_call(config.LOGGER_ID)
+        except Exception as e:
+            raise VoiceChatError(f"Failed to stream call: {str(e)}", chat_id=config.LOGGER_ID)
+
     async def force_stop_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
         try:
@@ -291,3 +339,250 @@ class Call(PyTgCalls):
             users = len(await assistant.get_participants(chat_id))
             if users == 1:
                 autoend[chat_id] = datetime.now() + timedelta(minutes=1)
+
+    async def play(self, client, chat_id):
+        check = db.get(chat_id)
+        popped = None
+        loop = await get_loop(chat_id)
+        try:
+            if loop == 0:
+                popped = check.pop(0)
+            else:
+                loop = loop - 1
+                await set_loop(chat_id, loop)
+            await auto_clean(popped)
+            if not check:
+                await _clear_(chat_id)
+                await client.leave_call(chat_id)
+                return
+        except Exception as e:
+            raise DatabaseError(f"Failed to process queue: {str(e)}", chat_id=chat_id)
+        queued = check[0]["file"]
+        title = (check[0]["title"]).title()
+        user = check[0]["by"]
+        original_chat_id = check[0]["chat_id"]
+        streamtype = check[0]["streamtype"]
+        videoid = check[0]["vidid"]
+        try:
+            db[chat_id][0]["played"] = 0
+            if exis := (check[0]).get("old_dur"):
+                db[chat_id][0]["dur"] = exis
+                db[chat_id][0]["seconds"] = check[0]["old_second"]
+                db[chat_id][0]["speed_path"] = None
+                db[chat_id][0]["speed"] = 1.0
+            video = str(streamtype) == "video"
+            if "live_" in queued:
+                n, link = await YouTube.video(videoid, True)
+                if n == 0:
+                    raise StreamError("Failed to fetch live stream URL", stream_type=streamtype)
+                stream = (
+                    MediaStream(
+                        link,
+                        audio_parameters=AudioQuality.STUDIO,
+                        video_parameters=VideoQuality.UHD_4K,
+                    )
+                    if video
+                    else MediaStream(
+                        link,
+                        audio_parameters=AudioQuality.STUDIO,
+                    )
+                )
+                try:
+                    await client.play(chat_id, stream)
+                except Exception as e:
+                    raise StreamError(f"Failed to play live stream: {str(e)}", stream_type=streamtype)
+                button = stream_markup(chat_id)
+                ke = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+                run = await app.send_message(
+                    chat_id=original_chat_id,
+                    text=ke.format(
+                        f"https://t.me/{app.username}?start=info_{videoid}",
+                        title[:30],
+                        check[0]["dur"],
+                        user,
+                    ),
+                    reply_markup=InlineKeyboardMarkup(button),
+                    disable_web_page_preview=True
+                )
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "tg"
+            elif "vid_" in queued:
+                mystic = await app.send_message(original_chat_id, "Next Track Is Downloading... Please wait.")
+                try:
+                    file_path, direct = await YouTube.download(videoid, mystic, videoid=True, video=video)
+                except Exception as e:
+                    await mystic.delete()
+                    raise DownloadError(f"Failed to download video: {str(e)}", url=videoid)
+                stream = (
+                    MediaStream(
+                        file_path,
+                        audio_parameters=AudioQuality.STUDIO,
+                        video_parameters=VideoQuality.UHD_4K,
+                    )
+                    if video
+                    else MediaStream(
+                        file_path,
+                        audio_parameters=AudioQuality.STUDIO,
+                    )
+                )
+                try:
+                    await client.play(chat_id, stream)
+                except Exception as e:
+                    raise StreamError(f"Failed to play downloaded stream: {str(e)}", stream_type=streamtype)
+                button = stream_markup(chat_id)
+                await mystic.delete()
+                ke = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+                run = await app.send_message(
+                    chat_id=original_chat_id,
+                    text=ke.format(
+                        f"https://t.me/{app.username}?start=info_{videoid}",
+                        title[:30],
+                        check[0]["dur"],
+                        user,
+                    ),
+                    reply_markup=InlineKeyboardMarkup(button),
+                    disable_web_page_preview=True
+                )
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "stream"
+            elif "index_" in queued:
+                stream = (
+                    MediaStream(
+                        videoid,
+                        audio_parameters=AudioQuality.STUDIO,
+                        video_parameters=VideoQuality.UHD_4K
+                    )
+                    if str(streamtype) == "video"
+                    else MediaStream(
+                        videoid,
+                        audio_parameters=AudioQuality.STUDIO
+                    )
+                )
+                try:
+                    await client.play(chat_id, stream)
+                except Exception as e:
+                    raise StreamError(f"Failed to play index stream: {str(e)}", stream_type=streamtype)
+                button = stream_markup(chat_id)
+                run = await app.send_message(
+                    chat_id=original_chat_id,
+                    text="<b>Started Streaming</b>\n\n<b>Stream Type:</b> Live Stream [URL]\n<b>Requested by:</b> {}".format(user),
+                    reply_markup=InlineKeyboardMarkup(button),
+                    disable_web_page_preview=True
+                )
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "tg"
+            else:
+                stream = (
+                    MediaStream(
+                        queued,
+                        audio_parameters=AudioQuality.STUDIO,
+                        video_parameters=VideoQuality.UHD_4K
+                    )
+                    if video
+                    else MediaStream(
+                        queued,
+                        audio_parameters=AudioQuality.STUDIO
+                    )
+                )
+                try:
+                    await client.play(chat_id, stream)
+                except Exception as e:
+                    raise StreamError(f"Failed to play stream: {str(e)}", stream_type=streamtype)
+                button = stream_markup(chat_id)
+                if videoid == "telegram":
+                    ke = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+                    run = await app.send_message(
+                        chat_id=original_chat_id,
+                        text=ke.format(config.SUPPORT_CHAT, title[:30], check[0]["dur"], user),
+                        reply_markup=InlineKeyboardMarkup(button),
+                        disable_web_page_preview=True
+                    )
+                    db[chat_id][0]["mystic"] = run
+                    db[chat_id][0]["markup"] = "tg"
+                elif videoid == "soundcloud":
+                    ke = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+                    run = await app.send_message(
+                        chat_id=original_chat_id,
+                        text=ke.format(config.SUPPORT_CHAT, title[:30], check[0]["dur"], user),
+                        reply_markup=InlineKeyboardMarkup(button),
+                        disable_web_page_preview=True
+                    )
+                    db[chat_id][0]["mystic"] = run
+                    db[chat_id][0]["markup"] = "tg"
+                else:
+                    ke = "<b>Started Streaming</b>\n\n<b>Title:</b> <a href={}>{}</a>\n<b>Duration:</b> {} minutes\n<b>Requested by:</b> {}"
+                    run = await app.send_message(
+                        chat_id=original_chat_id,
+                        text=ke.format(
+                            f"https://t.me/{app.username}?start=info_{videoid}",
+                            title[:30],
+                            check[0]["dur"],
+                            user,
+                        ),
+                        reply_markup=InlineKeyboardMarkup(button),
+                        disable_web_page_preview=True
+                    )
+                    db[chat_id][0]["mystic"] = run
+                    db[chat_id][0]["markup"] = "stream"
+        except StreamError as e:
+            await app.send_message(
+                original_chat_id,
+                text=f"Failed to switch stream: {str(e)}. Do /skip to change the track again.",
+                disable_web_page_preview=True
+            )
+        except Exception as e:
+            raise StreamError(f"Unexpected error in play: {str(e)}", stream_type=streamtype)
+
+    async def start(self):
+        logging.info("Starting Session Accounts For Assistance.\n")
+        try:
+            if config.STRING1:
+                await self.one.start()
+            if config.STRING2:
+                await self.two.start()
+            if config.STRING3:
+                await self.three.start()
+            if config.STRING4:
+                await self.four.start()
+            if config.STRING5:
+                await self.five.start()
+        except Exception as e:
+            raise ConfigError(f"Failed to start userbots: {str(e)}")
+
+    async def decorators(self):
+        @self.one.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+        @self.two.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+        @self.three.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+        @self.four.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+        @self.five.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
+        @self.one.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+        @self.two.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+        @self.three.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+        @self.four.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+        @self.five.on_update(filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT))
+        @self.one.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+        @self.two.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+        @self.three.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+        @self.four.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+        @self.five.on_update(filters.chat_update(ChatUpdate.Status.LEFT_CALL))
+        async def stream_services_handler(_, update: Update):
+            try:
+                await self.stop_stream(update.chat_id)
+            except Exception as e:
+                logging.error(f"Stream service handler error: {e}")
+
+        @self.one.on_update(filters.stream_end)
+        @self.two.on_update(filters.stream_end)
+        @self.three.on_update(filters.stream_end)
+        @self.four.on_update(filters.stream_end)
+        @self.five.on_update(filters.stream_end)
+        async def stream_end_handler(client, update: Update):
+            if not isinstance(update, StreamAudioEnded):
+                return
+            try:
+                await self.play(client, update.chat_id)
+            except Exception as e:
+                raise StreamError(f"Failed to handle stream endup: {str(e)}", stream_type="audio")
+
+
+BillaMusic = Call()
