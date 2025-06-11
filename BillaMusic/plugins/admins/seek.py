@@ -4,7 +4,7 @@ from pyrogram.types import Message
 import logging
 
 from BillaMusic import YouTube, app
-from BillaMusic.core.call import BillaMusic
+from BillaMusic.core.call import Billa
 from BillaMusic.misc import db
 from BillaMusic.utils import AdminRightsCheck, seconds_to_min
 from BillaMusic.utils.inline import close_markup
@@ -61,7 +61,7 @@ async def seek_comm(cli, message: Message, chat_id):
     if "index_" in file_path:
         file_path = playing[0]["vidid"]
     try:
-        await BillaMusic.seek_stream(
+        await Billa.seek_stream(
             chat_id,
             file_path,
             seconds_to_min(to_seek),
