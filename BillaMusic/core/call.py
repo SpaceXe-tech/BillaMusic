@@ -604,7 +604,7 @@ class Call(PyTgCalls):
         except Exception as e:
             raise ConfigError(f"Failed to start userbots: {str(e)}")
 
-    async def decorators(self):
+async def decorators(self):
     logging.info("Registering PyTgCalls update handlers")
 
     @self.one.on_update(filters.chat_update(ChatUpdate.Status.KICKED))
