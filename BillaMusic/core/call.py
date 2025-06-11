@@ -14,7 +14,7 @@ from pytgcalls.exceptions import (
 )
 from ntgcalls import TelegramServerError
 from pytgcalls.types import AudioQuality, Update, VideoQuality, MediaStream, ChatUpdate
-from pytgcalls.types.stream import StreamAudioEnded
+from pytgcalls.types import StreamEnded
 
 import config
 from BillaMusic import YouTube, app
@@ -636,7 +636,7 @@ async def decorators(self):
     @self.five.on_update(filters.stream_end)
     async def stream_end_handler(client, update: Update):
         logging.info(f"stream_end_handler called with update: {update}")
-        if not isinstance(update, StreamAudioEnded):  # Updated to StreamEnded
+        if not isinstance(update, StreamEnded):  # Updated to StreamEnded
             return
         try:
             await self.play(client, update.chat_id)
