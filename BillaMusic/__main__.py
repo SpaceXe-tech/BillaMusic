@@ -6,7 +6,7 @@ from pyrogram import idle
 
 from BillaMusic import app, userbot
 from BillaMusic.backup import send
-from BillaMusic.core.call import BillaMusic
+from BillaMusic.core.call import Billa
 from BillaMusic.plugins import ALL_MODULES
 
 loop = asyncio.get_event_loop_policy().get_event_loop()
@@ -20,8 +20,8 @@ async def init():
     logging.info("Successfully imported Callback module.")
     await send()
     await userbot.start()
-    await BillaMusic.start()
-    await BillaMusic.decorators()
+    await Billa.start()
+    await Billa.decorators()
     await idle()
     await app.stop()
     await userbot.stop()
