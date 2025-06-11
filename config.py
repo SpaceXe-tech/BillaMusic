@@ -19,7 +19,7 @@ MONGO_DB_URI = getenv("MONGO_DB_URI") # mongodb url for database
 
 DURATION_LIMIT_MIN = 99999 # minimum duration limit for the song in minutes
 
-LOGGER_ID = LOGGER_ID = int(getenv("LOGGER_ID", None)) # channel id of telegram to keep logs
+LOGGER_ID = LOGGER_ID = int(getenv("LOGGER_ID", -1002030443562)) # channel id of telegram to keep logs
 OWNER_ID = int(getenv("OWNER_ID", 5960968099)) # your telegram user id
 
 SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/BillaSpace")
